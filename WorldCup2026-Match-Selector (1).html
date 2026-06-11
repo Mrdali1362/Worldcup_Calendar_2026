@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>FIFA World Cup 2026 — Match Selector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #08090D;
+    --card: #111318;
+    --card-hover: #16181F;
+    --border: #1E2028;
+    --text: #F2F2F2;
+    --muted: #9A9DA8;
+    --accent: #00C97B;
+    --selected-bg: #0D1F17;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2A2B35; border-radius: 2px; }
+  ::selection { background: #00C97B33; }
+  *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* ─── Header ─── */
+  .pitch-header {
+    background: linear-gradient(180deg, #0C1A10 0%, #081208 60%, var(--bg) 100%);
+    position: relative;
+    overflow: hidden;
+    padding: 48px 24px 36px;
+    text-align: center;
+  }
+  .pitch-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(90deg, transparent, transparent 59px, #ffffff08 59px, #ffffff08 60px),
+      repeating-linear-gradient(0deg,  transparent, transparent 59px, #ffffff08 59px, #ffffff08 60px);
+    background-size: 60px 60px;
+    -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, transparent 100%);
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.35) 0%, transparent 100%);
+    pointer-events: none;
+  }
+  .pitch-circle {
+    position: absolute;
+    top: -24px; left: 50%; transform: translateX(-50%);
+    width: 180px; height: 180px;
+    border: 1px solid #ffffff0E;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .header-content { position: relative; }
+  .header-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: clamp(28px, 6vw, 48px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .header-sub {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .tz-wrap { white-space: nowrap; }
+  .tz-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 2px 2px;
+    border-radius: 6px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: #00C97B66;
+  }
+  .tz-button:hover { color: #2BE89B; }
+  .tz-button svg { opacity: 0.8; }
+
+  .tz-pop {
+    position: fixed;
+    z-index: 100;
+    width: 280px;
+    max-width: calc(100vw - 24px);
+    background: #14161C;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 18px 48px rgba(0,0,0,0.55);
+    overflow: hidden;
+  }
+  .tz-pop-inner { display: flex; flex-direction: column; max-height: 340px; }
+  .tz-search {
+    margin: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+  }
+  .tz-search:focus { border-color: #00C97B55; }
+  .tz-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 6px 8px;
+    overflow-y: auto;
+    flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .tz-list::-webkit-scrollbar { width: 8px; }
+  .tz-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .tz-opt {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .tz-opt:hover, .tz-opt.active { background: #00C97B14; }
+  .tz-opt.selected { background: #00C97B22; }
+  .tz-opt .tz-city { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tz-opt .tz-off { color: var(--muted); font-size: 11px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .tz-group-label {
+    padding: 8px 10px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tz-empty { padding: 16px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+
+  /* ─── Sticky controls ─── */
+  .controls {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(8, 9, 13, 0.92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0;
+  }
+  .controls-inner {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+  .controls-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .search-wrap {
+    position: relative;
+    width: 100%;
+    min-width: 160px;
+    max-width: 260px;
+  }
+  .search-icon {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 9px 14px 9px 36px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-input:focus { border-color: #00C97B55; }
+  .search-input::placeholder { color: var(--muted); }
+  .select-all-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    transition: color 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .select-all-btn:hover { color: var(--accent); }
+
+  .filters {
+    display: flex;
+    justify-content: safe center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 0 2px 2px;
+    scrollbar-width: none;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter-btn {
+    background: none;
+    border: 1px solid #3A3B47;
+    color: #B8BAC4;
+    padding: 5px 13px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .filter-btn:hover { border-color: #55576A; color: var(--text); }
+  .filter-btn.active { background: #00C97B18; border-color: #00C97B77; color: var(--accent); }
+
+  /* ─── Main list ─── */
+  main {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 28px 16px 140px;
+  }
+  /* ─── Mini calendar strip ─── */
+  .calendar {
+    display: flex;
+    justify-content: safe center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 2px 8px;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    cursor: grab;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  }
+  .calendar.dragging { cursor: grabbing; scroll-behavior: auto; }
+  .calendar::-webkit-scrollbar { height: 6px; }
+  .calendar::-webkit-scrollbar-track { background: transparent; }
+  .calendar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .calendar::-webkit-scrollbar-thumb:hover { background: #2E3040; }
+  .cal-day {
+    flex: 0 0 auto;
+    min-width: 52px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px 8px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .cal-day:hover { border-color: #2E3040; background: var(--card-hover); }
+  .cal-day.weekend { border-color: #00C97B33; }
+  .cal-dow {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .cal-num { font-size: 16px; font-weight: 700; color: var(--text); line-height: 1.1; }
+  .cal-mon { font-size: 9px; color: var(--muted); text-transform: uppercase; }
+  .cal-meta {
+    margin-top: 3px;
+    font-size: 9px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+  }
+  .cal-seldot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+
+  .day-section { margin-bottom: 28px; scroll-margin-top: 130px; }
+  .day-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .day-toggle {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.15s, color 0.15s;
+  }
+  .day-section.collapsed .day-toggle { transform: rotate(-90deg); }
+  .day-header:hover .day-toggle { color: var(--accent); }
+  .day-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .day-rule { flex: 1; height: 1px; background: var(--border); }
+  .day-count { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .day-section.collapsed .matches { display: none; }
+
+  .matches { display: flex; flex-direction: column; gap: 6px; }
+
+  .match-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, transform 0.08s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+  }
+  .match-card:hover { background: var(--card-hover); border-color: #2E3040; }
+  .match-card.selected { background: var(--selected-bg); border-color: #00C97B55; }
+  .match-card:active { transform: scale(0.997); }
+
+  .check-box {
+    width: 20px; height: 20px;
+    border: 1.5px solid #3A3B47;
+    border-radius: 4px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .match-card.selected .check-box {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .check-icon { display: none; }
+  .match-card.selected .check-icon { display: block; }
+
+  .match-time {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    min-width: 48px;
+    flex-shrink: 0;
+    font-weight: 500;
+    transition: color 0.12s;
+  }
+  .match-card.selected .match-time { color: var(--accent); }
+
+  .match-info { flex: 1; min-width: 0; }
+  .match-teams {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #D0D0D8;
+    transition: color 0.12s;
+  }
+  .match-card.selected .match-teams { color: var(--text); }
+  .vs { color: var(--muted); font-weight: 400; }
+  .match-venue {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stage-badge {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: #16181F;
+    padding: 3px 7px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .badge-final   { color: #F5C842; background: #1E1A0C; }
+  .badge-semi    { color: #E07F00; background: #1A1208; }
+  .badge-qf      { color: #8B6FE8; background: #120F1E; }
+  .badge-r16     { color: #5BA8F5; background: #0A1220; }
+  .badge-r32     { color: #8FBFDF; background: #0C151D; }
+  .badge-third   { color: #C0C0C0; background: #161618; }
+
+  .empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 80px 0;
+  }
+  .empty-state svg { margin-bottom: 14px; opacity: 0.35; }
+
+  /* ─── Export tray ─── */
+  .export-tray {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #0D0E13;
+    border-top: 1px solid var(--border);
+    z-index: 100;
+    transform: translateY(100%);
+    transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .export-tray.visible { transform: translateY(0); }
+  .export-tray-inner {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .tray-left { display: flex; align-items: baseline; gap: 8px; }
+  .tray-count { font-size: 15px; font-weight: 600; }
+  .tray-label { font-size: 12px; color: var(--muted); }
+  .tray-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  .export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  .export-btn:hover { border-color: #00C97B66; color: var(--accent); }
+  .export-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+  .export-btn.primary:hover { background: #00DF8A; border-color: #00DF8A; color: #000; }
+  .clear-btn {
+    background: none; border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 9px 4px;
+    transition: color 0.15s;
+  }
+  .clear-btn:hover { color: var(--text); }
+
+  @media (max-width: 600px) {
+    .match-venue { display: none; }
+    .pitch-header { padding: 36px 16px 28px; }
+    main { padding: 20px 12px 140px; }
+    .controls { padding: 10px 0; }
+    .controls-inner { padding: 0 12px; }
+    .export-tray-inner { padding: 12px 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .match-card, .export-tray, .export-btn, .filter-btn { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="pitch-header">
+  <div class="pitch-grid" aria-hidden="true"></div>
+  <div class="pitch-circle" aria-hidden="true"></div>
+  <div class="header-content">
+    <p class="header-eyebrow">FIFA World Cup 2026</p>
+    <h1>Pick your matches</h1>
+    <p class="header-sub">104 matches &middot; 11 Jun &ndash; 19 Jul &middot; <span class="tz-wrap">All times <button type="button" class="tz-button" id="tzButton" aria-haspopup="listbox" aria-expanded="false"><span id="tzCurrent">GMT+1</span><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></button></span></p>
+  </div>
+</header>
+
+<div class="tz-pop" id="tzPop" role="dialog" aria-label="Choose timezone" hidden>
+  <div class="tz-pop-inner">
+    <input type="search" class="tz-search" id="tzSearch" placeholder="Search city or zone…" aria-label="Search timezones" autocomplete="off"/>
+    <ul class="tz-list" id="tzList" role="listbox" aria-label="Timezones"></ul>
+  </div>
+</div>
+
+<div class="controls" role="search">
+  <div class="controls-inner">
+    <div class="controls-top">
+      <div class="search-wrap">
+        <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input class="search-input" type="search" id="search" placeholder="Search team or venue…" aria-label="Search matches"/>
+      </div>
+      <button class="select-all-btn" id="selectAllBtn" aria-label="Select or deselect all visible matches">Select all</button>
+      <button class="select-all-btn" id="collapseAllBtn" aria-label="Collapse or expand all days">Collapse days</button>
+    </div>
+    <div class="filters" role="group" aria-label="Filter by stage" id="filters"></div>
+    <div class="calendar" role="group" aria-label="Jump to date" id="calendar"></div>
+  </div>
+</div>
+
+<main id="matchList" aria-label="Match list"></main>
+
+<div class="export-tray" id="exportTray" role="region" aria-label="Export selected matches" aria-live="polite">
+  <div class="export-tray-inner">
+    <div class="tray-left">
+      <span class="tray-count" id="trayCount">0</span>
+      <span class="tray-label">matches selected &mdash; export to:</span>
+    </div>
+    <div class="tray-actions">
+      <button class="export-btn primary" id="btnICal" aria-label="Download iCal file">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        iCal
+      </button>
+      <button class="export-btn" id="btnGoogle" aria-label="Add selected matches to Google Calendar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        Google Calendar
+      </button>
+      <button class="export-btn" id="btnOutlook" aria-label="Add selected matches to Outlook Calendar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        Outlook
+      </button>
+      <button class="clear-btn" id="btnClear" aria-label="Clear all selected matches">Clear</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STAGES = ["All","Group Stage","Round of 32","Round of 16","Quarterfinal","Semifinal","Third-Place Match","Final"];
+const GROUP_STAGES = ["Group A","Group B","Group C","Group D","Group E","Group F","Group G","Group H","Group I","Group J","Group K","Group L"];
+
+const MATCHES = [
+  {id:1,stage:"Group A",date:"2026-06-11",timeET:"15:00",timeGMT1:"20:00",home:"Mexico",away:"South Africa",venue:"Estadio Azteca, Mexico City"},
+  {id:2,stage:"Group A",date:"2026-06-11",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"South Korea",away:"Czechia",venue:"Estadio Akron, Zapopan"},
+  {id:3,stage:"Group B",date:"2026-06-12",timeET:"15:00",timeGMT1:"20:00",home:"Canada",away:"Bosnia & Herzegovina",venue:"BMO Field, Toronto"},
+  {id:4,stage:"Group D",date:"2026-06-12",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"USA",away:"Paraguay",venue:"SoFi Stadium, Inglewood"},
+  {id:5,stage:"Group B",date:"2026-06-13",timeET:"15:00",timeGMT1:"20:00",home:"Qatar",away:"Switzerland",venue:"Levi's Stadium, Santa Clara"},
+  {id:6,stage:"Group C",date:"2026-06-13",timeET:"18:00",timeGMT1:"23:00",home:"Brazil",away:"Morocco",venue:"MetLife Stadium, East Rutherford"},
+  {id:7,stage:"Group C",date:"2026-06-13",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Haiti",away:"Scotland",venue:"Gillette Stadium, Foxborough"},
+  {id:8,stage:"Group D",date:"2026-06-14",timeET:"00:00",timeGMT1:"05:00",home:"Australia",away:"Türkiye",venue:"BC Place, Vancouver"},
+  {id:9,stage:"Group E",date:"2026-06-14",timeET:"13:00",timeGMT1:"18:00",home:"Germany",away:"Curaçao",venue:"NRG Stadium, Houston"},
+  {id:10,stage:"Group F",date:"2026-06-14",timeET:"16:00",timeGMT1:"21:00",home:"Netherlands",away:"Japan",venue:"AT&T Stadium, Arlington"},
+  {id:11,stage:"Group E",date:"2026-06-14",timeET:"19:00",timeGMT1:"00:00",nextDay:true,home:"Ivory Coast",away:"Ecuador",venue:"Lincoln Financial Field, Philadelphia"},
+  {id:12,stage:"Group F",date:"2026-06-14",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Sweden",away:"Tunisia",venue:"Estadio BBVA, Monterrey"},
+  {id:13,stage:"Group H",date:"2026-06-15",timeET:"12:00",timeGMT1:"17:00",home:"Spain",away:"Cape Verde",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:14,stage:"Group G",date:"2026-06-15",timeET:"15:00",timeGMT1:"20:00",home:"Belgium",away:"Egypt",venue:"Lumen Field, Seattle"},
+  {id:15,stage:"Group H",date:"2026-06-15",timeET:"18:00",timeGMT1:"23:00",home:"Saudi Arabia",away:"Uruguay",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:16,stage:"Group G",date:"2026-06-15",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Iran",away:"New Zealand",venue:"SoFi Stadium, Inglewood"},
+  {id:17,stage:"Group I",date:"2026-06-16",timeET:"15:00",timeGMT1:"20:00",home:"France",away:"Senegal",venue:"MetLife Stadium, East Rutherford"},
+  {id:18,stage:"Group I",date:"2026-06-16",timeET:"18:00",timeGMT1:"23:00",home:"Iraq",away:"Norway",venue:"Gillette Stadium, Foxborough"},
+  {id:19,stage:"Group J",date:"2026-06-16",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Argentina",away:"Algeria",venue:"Arrowhead Stadium, Kansas City"},
+  {id:20,stage:"Group J",date:"2026-06-17",timeET:"00:00",timeGMT1:"05:00",home:"Austria",away:"Jordan",venue:"Levi's Stadium, Santa Clara"},
+  {id:21,stage:"Group K",date:"2026-06-17",timeET:"13:00",timeGMT1:"18:00",home:"Portugal",away:"DR Congo",venue:"NRG Stadium, Houston"},
+  {id:22,stage:"Group L",date:"2026-06-17",timeET:"16:00",timeGMT1:"21:00",home:"England",away:"Croatia",venue:"AT&T Stadium, Arlington"},
+  {id:23,stage:"Group L",date:"2026-06-17",timeET:"19:00",timeGMT1:"00:00",nextDay:true,home:"Ghana",away:"Panama",venue:"BMO Field, Toronto"},
+  {id:24,stage:"Group K",date:"2026-06-17",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Uzbekistan",away:"Colombia",venue:"Estadio Azteca, Mexico City"},
+  {id:25,stage:"Group A",date:"2026-06-18",timeET:"12:00",timeGMT1:"17:00",home:"Czechia",away:"South Africa",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:26,stage:"Group B",date:"2026-06-18",timeET:"15:00",timeGMT1:"20:00",home:"Switzerland",away:"Bosnia & Herzegovina",venue:"SoFi Stadium, Inglewood"},
+  {id:27,stage:"Group B",date:"2026-06-18",timeET:"18:00",timeGMT1:"23:00",home:"Canada",away:"Qatar",venue:"BC Place, Vancouver"},
+  {id:28,stage:"Group A",date:"2026-06-18",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Mexico",away:"South Korea",venue:"Estadio Akron, Zapopan"},
+  {id:29,stage:"Group D",date:"2026-06-19",timeET:"15:00",timeGMT1:"20:00",home:"USA",away:"Australia",venue:"Lumen Field, Seattle"},
+  {id:30,stage:"Group C",date:"2026-06-19",timeET:"18:00",timeGMT1:"23:00",home:"Scotland",away:"Morocco",venue:"Gillette Stadium, Foxborough"},
+  {id:31,stage:"Group C",date:"2026-06-19",timeET:"20:30",timeGMT1:"01:30",nextDay:true,home:"Brazil",away:"Haiti",venue:"Lincoln Financial Field, Philadelphia"},
+  {id:32,stage:"Group D",date:"2026-06-19",timeET:"23:00",timeGMT1:"04:00",nextDay:true,home:"Türkiye",away:"Paraguay",venue:"Levi's Stadium, Santa Clara"},
+  {id:33,stage:"Group F",date:"2026-06-20",timeET:"13:00",timeGMT1:"18:00",home:"Netherlands",away:"Sweden",venue:"NRG Stadium, Houston"},
+  {id:34,stage:"Group E",date:"2026-06-20",timeET:"16:00",timeGMT1:"21:00",home:"Germany",away:"Ivory Coast",venue:"BMO Field, Toronto"},
+  {id:35,stage:"Group E",date:"2026-06-20",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"Ecuador",away:"Curaçao",venue:"Arrowhead Stadium, Kansas City"},
+  {id:36,stage:"Group F",date:"2026-06-21",timeET:"00:00",timeGMT1:"05:00",home:"Tunisia",away:"Japan",venue:"Estadio BBVA, Monterrey"},
+  {id:37,stage:"Group H",date:"2026-06-21",timeET:"12:00",timeGMT1:"17:00",home:"Spain",away:"Saudi Arabia",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:38,stage:"Group G",date:"2026-06-21",timeET:"15:00",timeGMT1:"20:00",home:"Belgium",away:"Iran",venue:"SoFi Stadium, Inglewood"},
+  {id:39,stage:"Group H",date:"2026-06-21",timeET:"18:00",timeGMT1:"23:00",home:"Uruguay",away:"Cape Verde",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:40,stage:"Group G",date:"2026-06-21",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"New Zealand",away:"Egypt",venue:"BC Place, Vancouver"},
+  {id:41,stage:"Group J",date:"2026-06-22",timeET:"13:00",timeGMT1:"18:00",home:"Argentina",away:"Austria",venue:"AT&T Stadium, Arlington"},
+  {id:42,stage:"Group I",date:"2026-06-22",timeET:"17:00",timeGMT1:"22:00",home:"France",away:"Iraq",venue:"Lincoln Financial Field, Philadelphia"},
+  {id:43,stage:"Group I",date:"2026-06-22",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"Norway",away:"Senegal",venue:"MetLife Stadium, East Rutherford"},
+  {id:44,stage:"Group J",date:"2026-06-22",timeET:"23:00",timeGMT1:"04:00",nextDay:true,home:"Jordan",away:"Algeria",venue:"Levi's Stadium, Santa Clara"},
+  {id:45,stage:"Group K",date:"2026-06-23",timeET:"13:00",timeGMT1:"18:00",home:"Portugal",away:"Uzbekistan",venue:"NRG Stadium, Houston"},
+  {id:46,stage:"Group L",date:"2026-06-23",timeET:"16:00",timeGMT1:"21:00",home:"England",away:"Ghana",venue:"Gillette Stadium, Foxborough"},
+  {id:47,stage:"Group L",date:"2026-06-23",timeET:"19:00",timeGMT1:"00:00",nextDay:true,home:"Panama",away:"Croatia",venue:"BMO Field, Toronto"},
+  {id:48,stage:"Group K",date:"2026-06-23",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Colombia",away:"DR Congo",venue:"Estadio Akron, Zapopan"},
+  {id:49,stage:"Group B",date:"2026-06-24",timeET:"15:00",timeGMT1:"20:00",home:"Switzerland",away:"Canada",venue:"BC Place, Vancouver"},
+  {id:50,stage:"Group B",date:"2026-06-24",timeET:"15:00",timeGMT1:"20:00",home:"Bosnia & Herzegovina",away:"Qatar",venue:"Lumen Field, Seattle"},
+  {id:51,stage:"Group C",date:"2026-06-24",timeET:"18:00",timeGMT1:"23:00",home:"Scotland",away:"Brazil",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:52,stage:"Group C",date:"2026-06-24",timeET:"18:00",timeGMT1:"23:00",home:"Morocco",away:"Haiti",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:53,stage:"Group A",date:"2026-06-24",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Czechia",away:"Mexico",venue:"Estadio Azteca, Mexico City"},
+  {id:54,stage:"Group A",date:"2026-06-24",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"South Africa",away:"South Korea",venue:"Estadio BBVA, Monterrey"},
+  {id:55,stage:"Group E",date:"2026-06-25",timeET:"16:00",timeGMT1:"21:00",home:"Curaçao",away:"Ivory Coast",venue:"Lincoln Financial Field, Philadelphia"},
+  {id:56,stage:"Group E",date:"2026-06-25",timeET:"16:00",timeGMT1:"21:00",home:"Ecuador",away:"Germany",venue:"MetLife Stadium, East Rutherford"},
+  {id:57,stage:"Group F",date:"2026-06-25",timeET:"19:00",timeGMT1:"00:00",nextDay:true,home:"Japan",away:"Sweden",venue:"AT&T Stadium, Arlington"},
+  {id:58,stage:"Group F",date:"2026-06-25",timeET:"19:00",timeGMT1:"00:00",nextDay:true,home:"Tunisia",away:"Netherlands",venue:"Arrowhead Stadium, Kansas City"},
+  {id:59,stage:"Group D",date:"2026-06-25",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Türkiye",away:"USA",venue:"SoFi Stadium, Inglewood"},
+  {id:60,stage:"Group D",date:"2026-06-25",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Paraguay",away:"Australia",venue:"Levi's Stadium, Santa Clara"},
+  {id:61,stage:"Group I",date:"2026-06-26",timeET:"15:00",timeGMT1:"20:00",home:"Norway",away:"France",venue:"Gillette Stadium, Foxborough"},
+  {id:62,stage:"Group I",date:"2026-06-26",timeET:"15:00",timeGMT1:"20:00",home:"Senegal",away:"Iraq",venue:"BMO Field, Toronto"},
+  {id:63,stage:"Group H",date:"2026-06-26",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"Cape Verde",away:"Saudi Arabia",venue:"NRG Stadium, Houston"},
+  {id:64,stage:"Group H",date:"2026-06-26",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"Uruguay",away:"Spain",venue:"Estadio Akron, Zapopan"},
+  {id:65,stage:"Group G",date:"2026-06-26",timeET:"23:00",timeGMT1:"04:00",nextDay:true,home:"Egypt",away:"Iran",venue:"Lumen Field, Seattle"},
+  {id:66,stage:"Group G",date:"2026-06-26",timeET:"23:00",timeGMT1:"04:00",nextDay:true,home:"New Zealand",away:"Belgium",venue:"BC Place, Vancouver"},
+  {id:67,stage:"Group L",date:"2026-06-27",timeET:"17:00",timeGMT1:"22:00",home:"Panama",away:"England",venue:"MetLife Stadium, East Rutherford"},
+  {id:68,stage:"Group L",date:"2026-06-27",timeET:"17:00",timeGMT1:"22:00",home:"Croatia",away:"Ghana",venue:"Lincoln Financial Field, Philadelphia"},
+  {id:69,stage:"Group K",date:"2026-06-27",timeET:"19:30",timeGMT1:"00:30",nextDay:true,home:"Colombia",away:"Portugal",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:70,stage:"Group K",date:"2026-06-27",timeET:"19:30",timeGMT1:"00:30",nextDay:true,home:"DR Congo",away:"Uzbekistan",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:71,stage:"Group J",date:"2026-06-27",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Algeria",away:"Austria",venue:"Arrowhead Stadium, Kansas City"},
+  {id:72,stage:"Group J",date:"2026-06-27",timeET:"22:00",timeGMT1:"03:00",nextDay:true,home:"Jordan",away:"Argentina",venue:"AT&T Stadium, Arlington"},
+  {id:73,stage:"Round of 32",date:"2026-06-28",timeET:"15:00",timeGMT1:"20:00",home:"Runner-up A",away:"Runner-up B",venue:"SoFi Stadium, Inglewood"},
+  {id:74,stage:"Round of 32",date:"2026-06-29",timeET:"13:00",timeGMT1:"18:00",home:"Winner C",away:"Runner-up F",venue:"NRG Stadium, Houston"},
+  {id:75,stage:"Round of 32",date:"2026-06-29",timeET:"16:30",timeGMT1:"21:30",home:"Winner E",away:"Best 3rd",venue:"Gillette Stadium, Foxborough"},
+  {id:76,stage:"Round of 32",date:"2026-06-29",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Winner F",away:"Runner-up C",venue:"Estadio BBVA, Monterrey"},
+  {id:77,stage:"Round of 32",date:"2026-06-30",timeET:"13:00",timeGMT1:"18:00",home:"Runner-up E",away:"Runner-up I",venue:"AT&T Stadium, Arlington"},
+  {id:78,stage:"Round of 32",date:"2026-06-30",timeET:"17:00",timeGMT1:"22:00",home:"Winner I",away:"Best 3rd",venue:"MetLife Stadium, East Rutherford"},
+  {id:79,stage:"Round of 32",date:"2026-06-30",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"Winner A",away:"Best 3rd",venue:"Estadio Azteca, Mexico City"},
+  {id:80,stage:"Round of 32",date:"2026-07-01",timeET:"12:00",timeGMT1:"17:00",home:"Winner L",away:"Best 3rd",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:81,stage:"Round of 32",date:"2026-07-01",timeET:"16:00",timeGMT1:"21:00",home:"Winner G",away:"Best 3rd",venue:"Lumen Field, Seattle"},
+  {id:82,stage:"Round of 32",date:"2026-07-01",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"Winner D",away:"Best 3rd",venue:"Levi's Stadium, Santa Clara"},
+  {id:83,stage:"Round of 32",date:"2026-07-02",timeET:"15:00",timeGMT1:"20:00",home:"Winner H",away:"Runner-up J",venue:"SoFi Stadium, Inglewood"},
+  {id:84,stage:"Round of 32",date:"2026-07-02",timeET:"19:00",timeGMT1:"00:00",nextDay:true,home:"Runner-up K",away:"Runner-up L",venue:"BMO Field, Toronto"},
+  {id:85,stage:"Round of 32",date:"2026-07-02",timeET:"23:00",timeGMT1:"04:00",nextDay:true,home:"Winner B",away:"Best 3rd",venue:"BC Place, Vancouver"},
+  {id:86,stage:"Round of 32",date:"2026-07-03",timeET:"14:00",timeGMT1:"19:00",home:"Runner-up D",away:"Runner-up G",venue:"AT&T Stadium, Arlington"},
+  {id:87,stage:"Round of 32",date:"2026-07-03",timeET:"18:00",timeGMT1:"23:00",home:"Winner J",away:"Runner-up H",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:88,stage:"Round of 32",date:"2026-07-03",timeET:"21:30",timeGMT1:"02:30",nextDay:true,home:"Winner K",away:"Best 3rd",venue:"Arrowhead Stadium, Kansas City"},
+  {id:89,stage:"Round of 16",date:"2026-07-04",timeET:"13:00",timeGMT1:"18:00",home:"W73",away:"W75",venue:"NRG Stadium, Houston"},
+  {id:90,stage:"Round of 16",date:"2026-07-04",timeET:"17:00",timeGMT1:"22:00",home:"W74",away:"W77",venue:"Lincoln Financial Field, Philadelphia"},
+  {id:91,stage:"Round of 16",date:"2026-07-05",timeET:"16:00",timeGMT1:"21:00",home:"W76",away:"W78",venue:"MetLife Stadium, East Rutherford"},
+  {id:92,stage:"Round of 16",date:"2026-07-05",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"W79",away:"W80",venue:"Estadio Azteca, Mexico City"},
+  {id:93,stage:"Round of 16",date:"2026-07-06",timeET:"15:00",timeGMT1:"20:00",home:"W83",away:"W84",venue:"AT&T Stadium, Arlington"},
+  {id:94,stage:"Round of 16",date:"2026-07-06",timeET:"20:00",timeGMT1:"01:00",nextDay:true,home:"W81",away:"W82",venue:"Lumen Field, Seattle"},
+  {id:95,stage:"Round of 16",date:"2026-07-07",timeET:"12:00",timeGMT1:"17:00",home:"W86",away:"W88",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:96,stage:"Round of 16",date:"2026-07-07",timeET:"16:00",timeGMT1:"21:00",home:"W85",away:"W87",venue:"BC Place, Vancouver"},
+  {id:97,stage:"Quarterfinal",date:"2026-07-09",timeET:"16:00",timeGMT1:"21:00",home:"W89",away:"W90",venue:"Gillette Stadium, Foxborough"},
+  {id:98,stage:"Quarterfinal",date:"2026-07-10",timeET:"15:00",timeGMT1:"20:00",home:"W93",away:"W94",venue:"SoFi Stadium, Inglewood"},
+  {id:99,stage:"Quarterfinal",date:"2026-07-11",timeET:"17:00",timeGMT1:"22:00",home:"W91",away:"W92",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:100,stage:"Quarterfinal",date:"2026-07-11",timeET:"21:00",timeGMT1:"02:00",nextDay:true,home:"W95",away:"W96",venue:"Arrowhead Stadium, Kansas City"},
+  {id:101,stage:"Semifinal",date:"2026-07-14",timeET:"15:00",timeGMT1:"20:00",home:"W97",away:"W98",venue:"AT&T Stadium, Arlington"},
+  {id:102,stage:"Semifinal",date:"2026-07-15",timeET:"15:00",timeGMT1:"20:00",home:"W99",away:"W100",venue:"Mercedes-Benz Stadium, Atlanta"},
+  {id:103,stage:"Third-Place Match",date:"2026-07-18",timeET:"17:00",timeGMT1:"22:00",home:"Semifinal Loser 1",away:"Semifinal Loser 2",venue:"Hard Rock Stadium, Miami Gardens"},
+  {id:104,stage:"Final",date:"2026-07-19",timeET:"15:00",timeGMT1:"20:00",home:"Finalist 1",away:"Finalist 2",venue:"MetLife Stadium, East Rutherford, NJ"},
+];
+
+let selected = new Set();
+let collapsedDays = new Set();
+let activeFilter = "All";
+let searchQuery = "";
+let userTZ = "Etc/GMT-1"; // default: GMT+1 (note: Etc/GMT-1 == UTC+1)
+
+function stageGroup(stage) {
+  return GROUP_STAGES.includes(stage) ? "Group Stage" : stage;
+}
+
+// True UTC instant of kick-off. Source data is in GMT+1 (summer, fixed UTC+1),
+// with nextDay meaning the GMT+1 clock time rolled past midnight.
+function getMatchUTC(m) {
+  const [h, min] = m.timeGMT1.split(":").map(Number);
+  const [y, mo, d] = m.date.split("-").map(Number);
+  // Build the GMT+1 wall-clock instant as UTC, then subtract 1h to get true UTC.
+  let ms = Date.UTC(y, mo - 1, d, h, min || 0, 0);
+  if (m.nextDay) ms += 24 * 3600000;
+  ms -= 3600000; // GMT+1 -> UTC
+  return new Date(ms);
+}
+
+// Get calendar parts (year/month/day/weekday/hour/minute) for an instant in a given IANA zone.
+function partsInZone(date, tz) {
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", weekday: "short", hour12: false,
+  });
+  const parts = {};
+  for (const p of fmt.formatToParts(date)) parts[p.type] = p.value;
+  // hour can be "24" in some engines for midnight; normalize
+  if (parts.hour === "24") parts.hour = "00";
+  return parts;
+}
+
+// Local date key (YYYY-MM-DD) of a match in the selected zone — used for grouping.
+function localDateKey(m) {
+  const p = partsInZone(getMatchUTC(m), userTZ);
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+// Local kick-off time "HH:MM" in the selected zone.
+function localTime(m) {
+  const p = partsInZone(getMatchUTC(m), userTZ);
+  return `${p.hour}:${p.minute}`;
+}
+
+// Day offset of the match's local date vs its scheduled (home) date: -1, 0, or +1.
+function dayDelta(m) {
+  const key = localDateKey(m);
+  const sched = m.nextDay
+    ? (() => { const d = new Date(m.date + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0,10); })()
+    : m.date;
+  if (key === sched) return 0;
+  return key < sched ? -1 : 1;
+}
+
+function isWeekendKey(dateStr) {
+  // dateStr is YYYY-MM-DD; treat as a plain calendar date
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const day = new Date(Date.UTC(y, mo - 1, d, 12)).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+function formatDate(dateStr) {
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d, 12));
+  const base = dt.toLocaleDateString("en-GB", {weekday:"short", day:"numeric", month:"short", timeZone:"UTC"});
+  return isWeekendKey(dateStr) ? base + " 🎉" : base;
+}
+
+// Friendly label for the current zone, with live UTC offset.
+function tzLabel(tz) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {timeZone: tz, timeZoneName: "shortOffset"}).formatToParts(new Date());
+    const off = parts.find(p => p.type === "timeZoneName");
+    const city = tz.split("/").pop().replace(/_/g, " ");
+    return `${city} (${off ? off.value : tz})`;
+  } catch { return tz; }
+}
+
+function getStartDate(m) {
+  // Kept for any legacy callers: returns the true UTC instant.
+  return getMatchUTC(m);
+}
+
+function fmtICS(dt) {
+  return dt.toISOString().replace(/[-:]/g,"").replace(".000","");
+}
+
+function buildICS(ids) {
+  const sel = MATCHES.filter(m => ids.has(m.id));
+  const lines = [
+    "BEGIN:VCALENDAR","VERSION:2.0",
+    "PRODID:-//FIFA World Cup 2026 Selector//EN",
+    "X-WR-CALNAME:FIFA World Cup 2026 — My Matches",
+    "CALSCALE:GREGORIAN","METHOD:PUBLISH",
+  ];
+  sel.forEach(m => {
+    const start = getStartDate(m);
+    const end = new Date(start.getTime() + 2*3600000);
+    lines.push("BEGIN:VEVENT");
+    lines.push("UID:wc2026-"+m.id+"@selector");
+    lines.push("SUMMARY:\u26BD "+m.home+" vs "+m.away+" ("+m.stage+")");
+    lines.push("DTSTART:"+fmtICS(start));
+    lines.push("DTEND:"+fmtICS(end));
+    lines.push("LOCATION:"+m.venue);
+    lines.push("DESCRIPTION:FIFA World Cup 2026 \u2014 "+m.stage+" | Kick-off: "+localTime(m)+" "+tzLabel(userTZ));
+    lines.push("END:VEVENT");
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+
+function toGoogleURL(m) {
+  const start = getStartDate(m);
+  const end = new Date(start.getTime() + 2*3600000);
+  const fmt = dt => dt.toISOString().replace(/[-:]/g,"").replace(".000Z","Z");
+  const p = new URLSearchParams({
+    action:"TEMPLATE",
+    text:"\u26BD "+m.home+" vs "+m.away+" \u2014 FIFA World Cup 2026",
+    dates:fmt(start)+"/"+fmt(end),
+    details:m.stage+" | FIFA World Cup 2026",
+    location:m.venue,
+  });
+  return "https://calendar.google.com/calendar/render?"+p;
+}
+
+function toOutlookURL(m) {
+  const start = getStartDate(m);
+  const end = new Date(start.getTime() + 2*3600000);
+  const p = new URLSearchParams({
+    path:"/calendar/action/compose",
+    rru:"addevent",
+    subject:"\u26BD "+m.home+" vs "+m.away+" \u2014 FIFA World Cup 2026",
+    startdt:start.toISOString(),
+    enddt:end.toISOString(),
+    body:m.stage+" | FIFA World Cup 2026",
+    location:m.venue,
+  });
+  return "https://outlook.live.com/calendar/0/deeplink/compose?"+p;
+}
+
+function badgeClass(stage) {
+  if (stage === "Final") return "stage-badge badge-final";
+  if (stage === "Semifinal") return "stage-badge badge-semi";
+  if (stage === "Quarterfinal") return "stage-badge badge-qf";
+  if (stage === "Round of 16") return "stage-badge badge-r16";
+  if (stage === "Round of 32") return "stage-badge badge-r32";
+  if (stage === "Third-Place Match") return "stage-badge badge-third";
+  return "stage-badge";
+}
+
+function badgeText(stage) {
+  return stage.replace("Group ","Grp ");
+}
+
+function getFiltered() {
+  return MATCHES.filter(m => {
+    const sg = stageGroup(m.stage);
+    const stageOK = activeFilter === "All" || sg === activeFilter || m.stage === activeFilter;
+    const q = searchQuery.toLowerCase();
+    const searchOK = !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || m.venue.toLowerCase().includes(q);
+    return stageOK && searchOK;
+  });
+}
+
+function groupByDate(list) {
+  const map = {};
+  list.forEach(m => { const k = localDateKey(m); if (!map[k]) map[k] = []; map[k].push(m); });
+  // sort each day's matches by actual kick-off instant
+  Object.values(map).forEach(arr => arr.sort((a,b) => getMatchUTC(a) - getMatchUTC(b)));
+  return Object.entries(map).sort(([a],[b]) => a.localeCompare(b));
+}
+
+function renderCalendar() {
+  const wrap = document.getElementById("calendar");
+  const prevScroll = wrap.scrollLeft;
+  wrap.innerHTML = "";
+  const grouped = groupByDate(getFiltered());
+  grouped.forEach(([date, dayMatches]) => {
+    const [cy, cmo, cd] = date.split("-").map(Number);
+    const d = new Date(Date.UTC(cy, cmo - 1, cd, 12));
+    const weekend = isWeekendKey(date);
+    const selCount = dayMatches.filter(m => selected.has(m.id)).length;
+    const chip = document.createElement("button");
+    chip.className = "cal-day" + (weekend ? " weekend" : "");
+    chip.setAttribute("aria-label", `Jump to ${formatDate(date)}, ${dayMatches.length} matches`);
+    chip.innerHTML = `
+      <div class="cal-dow">${d.toLocaleDateString("en-GB",{weekday:"short",timeZone:"UTC"})}${weekend ? " 🎉" : ""}</div>
+      <div class="cal-num">${d.getUTCDate()}</div>
+      <div class="cal-mon">${d.toLocaleDateString("en-GB",{month:"short",timeZone:"UTC"})}</div>
+      <div class="cal-meta">${dayMatches.length}${selCount ? '<span class="cal-seldot"></span>' : ''}</div>
+    `;
+    chip.addEventListener("click", () => {
+      collapsedDays.delete(date);
+      renderList();
+      const sec = document.getElementById("day-" + date);
+      if (sec) sec.scrollIntoView({behavior:"smooth", block:"start"});
+    });
+    wrap.appendChild(chip);
+  });
+  wrap.scrollLeft = prevScroll;
+}
+
+function renderFilters() {
+  const wrap = document.getElementById("filters");
+  wrap.innerHTML = "";
+  STAGES.forEach(s => {
+    const btn = document.createElement("button");
+    btn.className = "filter-btn" + (activeFilter === s ? " active" : "");
+    btn.textContent = s;
+    btn.setAttribute("aria-pressed", activeFilter === s);
+    btn.addEventListener("click", () => { activeFilter = s; render(); });
+    wrap.appendChild(btn);
+  });
+}
+
+function renderList() {
+  const main = document.getElementById("matchList");
+  const filtered = getFiltered();
+  const grouped = groupByDate(filtered);
+
+  if (grouped.length === 0) {
+    main.innerHTML = '<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><p>No matches found</p></div>';
+    return;
+  }
+
+  main.innerHTML = "";
+  grouped.forEach(([date, dayMatches]) => {
+    const daySelected = dayMatches.filter(m => selected.has(m.id)).length;
+    const isCollapsed = collapsedDays.has(date);
+    const section = document.createElement("section");
+    section.className = "day-section" + (isCollapsed ? " collapsed" : "");
+    section.id = "day-" + date;
+    section.setAttribute("aria-label", formatDate(date));
+
+    const header = document.createElement("div");
+    header.className = "day-header";
+    header.setAttribute("role", "button");
+    header.setAttribute("tabindex", "0");
+    header.setAttribute("aria-expanded", String(!isCollapsed));
+    header.innerHTML = `
+      <span class="day-toggle" aria-hidden="true">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+      <span class="day-label">${formatDate(date)}</span>
+      <div class="day-rule" aria-hidden="true"></div>
+      <span class="day-count">${daySelected}/${dayMatches.length} selected</span>
+    `;
+    const toggleDay = () => {
+      if (collapsedDays.has(date)) collapsedDays.delete(date);
+      else collapsedDays.add(date);
+      renderList();
+    };
+    header.addEventListener("click", toggleDay);
+    header.addEventListener("keydown", e => { if (e.key===" "||e.key==="Enter") { e.preventDefault(); toggleDay(); } });
+    section.appendChild(header);
+
+    const matchWrap = document.createElement("div");
+    matchWrap.className = "matches";
+
+    dayMatches.forEach(m => {
+      const isSel = selected.has(m.id);
+      const card = document.createElement("div");
+      card.className = "match-card" + (isSel ? " selected" : "");
+      card.setAttribute("role","checkbox");
+      card.setAttribute("aria-checked", isSel);
+      card.setAttribute("tabindex","0");
+      const lt = localTime(m);
+      card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(localDateKey(m))} at ${lt}`);
+      card.dataset.id = m.id;
+
+      const timeDisplay = lt;
+
+      card.innerHTML = `
+        <div class="check-box" aria-hidden="true">
+          <svg class="check-icon" width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span class="match-time">${timeDisplay}</span>
+        <div class="match-info">
+          <p class="match-teams">${m.home} <span class="vs">vs</span> ${m.away}</p>
+          <p class="match-venue">${m.venue}</p>
+        </div>
+        <span class="${badgeClass(m.stage)}">${badgeText(m.stage)}</span>
+      `;
+
+      const toggle = () => {
+        if (selected.has(m.id)) selected.delete(m.id);
+        else selected.add(m.id);
+        render();
+      };
+      card.addEventListener("click", toggle);
+      card.addEventListener("keydown", e => { if (e.key===" "||e.key==="Enter") { e.preventDefault(); toggle(); } });
+
+      matchWrap.appendChild(card);
+    });
+    section.appendChild(matchWrap);
+    main.appendChild(section);
+  });
+}
+
+function renderTray() {
+  const tray = document.getElementById("exportTray");
+  const count = document.getElementById("trayCount");
+  count.textContent = selected.size;
+  tray.classList.toggle("visible", selected.size > 0);
+}
+
+function renderSelectAll() {
+  const btn = document.getElementById("selectAllBtn");
+  const filtered = getFiltered();
+  const allSel = filtered.length > 0 && filtered.every(m => selected.has(m.id));
+  btn.textContent = allSel ? "Deselect all" : "Select all";
+
+  const cBtn = document.getElementById("collapseAllBtn");
+  const dates = groupByDate(filtered).map(([date]) => date);
+  const allCollapsed = dates.length > 0 && dates.every(d => collapsedDays.has(d));
+  cBtn.textContent = allCollapsed ? "Expand days" : "Collapse days";
+}
+
+function render() {
+  renderFilters();
+  renderCalendar();
+  renderList();
+  renderTray();
+  renderSelectAll();
+}
+
+// Search
+document.getElementById("search").addEventListener("input", e => {
+  searchQuery = e.target.value;
+  render();
+});
+
+// Select all
+document.getElementById("selectAllBtn").addEventListener("click", () => {
+  const filtered = getFiltered();
+  const allSel = filtered.every(m => selected.has(m.id));
+  filtered.forEach(m => allSel ? selected.delete(m.id) : selected.add(m.id));
+  render();
+});
+
+// Collapse / expand all days
+document.getElementById("collapseAllBtn").addEventListener("click", () => {
+  const dates = groupByDate(getFiltered()).map(([date]) => date);
+  const allCollapsed = dates.length > 0 && dates.every(d => collapsedDays.has(d));
+  if (allCollapsed) dates.forEach(d => collapsedDays.delete(d));
+  else dates.forEach(d => collapsedDays.add(d));
+  render();
+});
+
+// iCal download
+document.getElementById("btnICal").addEventListener("click", () => {
+  const ics = buildICS(selected);
+  const blob = new Blob([ics], {type:"text/calendar"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "wc2026-my-matches.ics"; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// Google Calendar
+document.getElementById("btnGoogle").addEventListener("click", () => {
+  const sel = MATCHES.filter(m => selected.has(m.id));
+  sel.forEach((m, i) => setTimeout(() => window.open(toGoogleURL(m),"_blank"), i * 350));
+});
+
+// Outlook
+document.getElementById("btnOutlook").addEventListener("click", () => {
+  const sel = MATCHES.filter(m => selected.has(m.id));
+  sel.forEach((m, i) => setTimeout(() => window.open(toOutlookURL(m),"_blank"), i * 350));
+});
+
+// Clear
+document.getElementById("btnClear").addEventListener("click", () => {
+  selected.clear();
+  render();
+});
+
+// Calendar horizontal scroll: wheel + click-drag
+(function setupCalendarScroll() {
+  const cal = document.getElementById("calendar");
+
+  // Translate vertical wheel into horizontal scroll
+  cal.addEventListener("wheel", e => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      cal.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // Click-drag to pan
+  let isDown = false, startX = 0, startScroll = 0, moved = false;
+  cal.addEventListener("pointerdown", e => {
+    isDown = true; moved = false;
+    startX = e.clientX;
+    startScroll = cal.scrollLeft;
+    cal.classList.add("dragging");
+  });
+  cal.addEventListener("pointermove", e => {
+    if (!isDown) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 4) moved = true;
+    cal.scrollLeft = startScroll - dx;
+  });
+  const endDrag = () => { isDown = false; cal.classList.remove("dragging"); };
+  cal.addEventListener("pointerup", endDrag);
+  cal.addEventListener("pointerleave", endDrag);
+  // Suppress chip click if the pointer was dragged
+  cal.addEventListener("click", e => {
+    if (moved) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+})();
+
+// ─── Timezone picker ───
+(function setupTimezonePicker() {
+  const btn = document.getElementById("tzButton");
+  const current = document.getElementById("tzCurrent");
+  const pop = document.getElementById("tzPop");
+  const search = document.getElementById("tzSearch");
+  const list = document.getElementById("tzList");
+
+  // Full IANA zone list (with graceful fallback for older engines)
+  let zones = [];
+  try {
+    if (typeof Intl.supportedValuesOf === "function") zones = Intl.supportedValuesOf("timeZone");
+  } catch {}
+  if (!zones.length) {
+    zones = ["Etc/GMT-1","UTC","Europe/London","Europe/Stockholm","Europe/Paris","Europe/Madrid",
+      "America/New_York","America/Chicago","America/Denver","America/Los_Angeles","America/Toronto",
+      "America/Mexico_City","America/Sao_Paulo","Africa/Lagos","Asia/Tokyo","Asia/Shanghai",
+      "Asia/Kolkata","Asia/Dubai","Australia/Sydney"];
+  }
+
+  const detected = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return null; } })();
+
+  // Current numeric offset (minutes) for sorting/labelling
+  function offsetMinutes(tz) {
+    try {
+      const d = new Date();
+      const s = new Intl.DateTimeFormat("en-US", {timeZone: tz, timeZoneName: "longOffset"})
+        .formatToParts(d).find(p => p.type === "timeZoneName")?.value || "GMT+00:00";
+      const m = s.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+      if (!m) return 0;
+      const sign = m[1] === "-" ? -1 : 1;
+      return sign * (parseInt(m[2],10) * 60 + (m[3] ? parseInt(m[3],10) : 0));
+    } catch { return 0; }
+  }
+  function offsetText(tz) {
+    const mins = offsetMinutes(tz);
+    const sign = mins < 0 ? "−" : "+";
+    const a = Math.abs(mins);
+    return `UTC${sign}${String(Math.floor(a/60)).padStart(2,"0")}:${String(a%60).padStart(2,"0")}`;
+  }
+  function cityName(tz) {
+    if (tz === "Etc/GMT-1") return "GMT+1 (tournament default)";
+    if (tz === "UTC" || tz === "Etc/UTC") return "UTC";
+    return tz.split("/").slice(1).join(" / ").replace(/_/g, " ") || tz;
+  }
+
+  let activeIndex = -1;
+  let rows = []; // currently rendered {tz, el}
+
+  function setZone(tz) {
+    userTZ = tz;
+    current.textContent = (tz === "Etc/GMT-1") ? "GMT+1" : `${cityName(tz)} (${offsetText(tz)})`;
+    closePop();
+    render();
+  }
+
+  function buildList(filter) {
+    list.innerHTML = "";
+    rows = [];
+    const q = (filter || "").trim().toLowerCase();
+    const match = tz => !q || tz.toLowerCase().replace(/_/g," ").includes(q) || cityName(tz).toLowerCase().includes(q) || offsetText(tz).toLowerCase().includes(q);
+
+    const pinned = [];
+    if (detected && detected !== "Etc/GMT-1" && match(detected)) pinned.push(detected);
+    if (match("Etc/GMT-1")) pinned.push("Etc/GMT-1");
+
+    const rest = zones
+      .filter(tz => tz !== detected && tz !== "Etc/GMT-1" && match(tz))
+      .sort((a,b) => offsetMinutes(a) - offsetMinutes(b) || cityName(a).localeCompare(cityName(b)));
+
+    const addOpt = tz => {
+      const li = document.createElement("li");
+      li.className = "tz-opt" + (tz === userTZ ? " selected" : "");
+      li.setAttribute("role","option");
+      li.setAttribute("aria-selected", tz === userTZ);
+      li.innerHTML = `<span class="tz-city">${cityName(tz) + (tz === detected && tz !== "Etc/GMT-1" ? " — your timezone" : "")}</span><span class="tz-off">${offsetText(tz)}</span>`;
+      li.addEventListener("click", () => setZone(tz));
+      list.appendChild(li);
+      rows.push({tz, el: li});
+    };
+
+    if (pinned.length) {
+      const lbl = document.createElement("li");
+      lbl.className = "tz-group-label";
+      lbl.textContent = "Suggested";
+      lbl.setAttribute("aria-hidden","true");
+      list.appendChild(lbl);
+      pinned.forEach(addOpt);
+      const lbl2 = document.createElement("li");
+      lbl2.className = "tz-group-label";
+      lbl2.textContent = "All timezones";
+      lbl2.setAttribute("aria-hidden","true");
+      list.appendChild(lbl2);
+    }
+    if (rest.length) rest.forEach(addOpt);
+    if (!rows.length) {
+      const empty = document.createElement("li");
+      empty.className = "tz-empty";
+      empty.textContent = "No matching timezone";
+      list.appendChild(empty);
+    }
+    activeIndex = -1;
+  }
+
+  function positionPop() {
+    const r = btn.getBoundingClientRect();
+    const w = Math.min(280, window.innerWidth - 24);
+    let left = r.left + r.width/2 - w/2;
+    left = Math.max(12, Math.min(left, window.innerWidth - w - 12));
+    pop.style.width = w + "px";
+    pop.style.left = left + "px";
+    pop.style.top = (r.bottom + 8) + "px";
+  }
+
+  function openPop() {
+    buildList("");
+    pop.hidden = false;
+    positionPop();
+    btn.setAttribute("aria-expanded","true");
+    search.value = "";
+    search.focus();
+  }
+  function closePop() {
+    pop.hidden = true;
+    btn.setAttribute("aria-expanded","false");
+  }
+
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    if (pop.hidden) openPop(); else closePop();
+  });
+  search.addEventListener("input", () => buildList(search.value));
+  search.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!rows.length) return;
+      activeIndex += (e.key === "ArrowDown" ? 1 : -1);
+      if (activeIndex < 0) activeIndex = rows.length - 1;
+      if (activeIndex >= rows.length) activeIndex = 0;
+      rows.forEach((r,i) => r.el.classList.toggle("active", i === activeIndex));
+      rows[activeIndex].el.scrollIntoView({block:"nearest"});
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIndex >= 0 && rows[activeIndex]) setZone(rows[activeIndex].tz);
+      else if (rows.length) setZone(rows[0].tz);
+    } else if (e.key === "Escape") {
+      closePop(); btn.focus();
+    }
+  });
+  document.addEventListener("click", e => {
+    if (!pop.hidden && !pop.contains(e.target) && e.target !== btn && !btn.contains(e.target)) closePop();
+  });
+  window.addEventListener("resize", () => { if (!pop.hidden) positionPop(); });
+  window.addEventListener("scroll", () => { if (!pop.hidden) positionPop(); }, true);
+})();
+
+// Init
+render();
+</script>
+</body>
+</html>
