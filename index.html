@@ -92,6 +92,55 @@
   .update-status.ok { color: var(--accent); }
   .update-status.error { color: #E0795B; }
 
+  /* ─── Tabs ─── */
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 14px 16px 0;
+  }
+  .tab {
+    position: relative;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    padding: 10px 18px;
+    border-radius: 8px 8px 0 0;
+    min-height: 44px;
+    transition: color 0.15s, background 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); }
+  .tab.active::after {
+    content: "";
+    position: absolute;
+    left: 14px; right: 14px; bottom: -1px;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .tab-badge {
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--card-hover);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 1px 7px;
+    min-width: 18px;
+    text-align: center;
+  }
+  .tab.active .tab-badge { background: var(--accent); color: #04130C; }
+
   /* ─── Sticky controls ─── */
   .controls {
     position: sticky;
@@ -335,6 +384,8 @@
     padding: 80px 0;
   }
   .empty-state svg { margin-bottom: 14px; opacity: 0.35; }
+  .empty-state .empty-sub { font-size: 13px; opacity: 0.7; margin-top: 6px; }
+  .day-header.static { cursor: default; }
 
   /* ─── Export tray ─── */
   .export-tray {
@@ -517,7 +568,12 @@
   </div>
 </header>
 
-<div class="controls" role="search">
+<nav class="tabs" role="tablist" aria-label="View">
+  <button class="tab active" id="tabUpcoming" role="tab" aria-selected="true" aria-controls="matchList">Upcoming</button>
+  <button class="tab" id="tabResults" role="tab" aria-selected="false" aria-controls="matchList">Results <span class="tab-badge" id="resultsBadge" hidden>0</span></button>
+</nav>
+
+<div class="controls" role="search" id="controlsBar">
   <div class="controls-inner">
     <div class="controls-top">
       <div class="search-wrap">
@@ -693,6 +749,7 @@ let selected = new Set();
 let collapsedDays = new Set();
 let activeFilter = "All";
 let searchQuery = "";
+let activeTab = "upcoming"; // "upcoming" | "results"
 let userTZ = "Europe/Stockholm"; // default: Sweden (CET/CEST)
 
 function stageGroup(stage) {
@@ -934,12 +991,19 @@ function badgeText(stage) {
 
 function getFiltered() {
   return MATCHES.filter(m => {
+    if (!isSelectable(m)) return false;           // played matches live on the Results tab
     const sg = stageGroup(m.stage);
     const stageOK = activeFilter === "All" || sg === activeFilter || m.stage === activeFilter;
     const q = searchQuery.toLowerCase();
     const searchOK = !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || m.venue.toLowerCase().includes(q);
     return stageOK && searchOK;
   });
+}
+
+// All played matches, most-recent first (for the Results tab).
+function getResults() {
+  return MATCHES.filter(m => !isSelectable(m))
+    .sort((a, b) => getMatchUTC(b) - getMatchUTC(a));
 }
 
 function groupByDate(list) {
@@ -995,24 +1059,80 @@ function renderFilters() {
   });
 }
 
+// Build one match card element (used by both Upcoming and Results views).
+function buildCard(m) {
+  const res = getResult(m);          // final score, or null if not played
+  const played = !!res;
+  const isSel = selected.has(m.id);
+  const card = document.createElement("div");
+  card.className = "match-card" + (isSel ? " selected" : "") + (played ? " played" : "");
+  const lt = localTime(m);
+  const ld = localDateKey(m), md = matchdayKey(m);
+  let dd = 0;
+  if (ld > md) dd = 1; else if (ld < md) dd = -1;
+  const deltaMark = dd !== 0
+    ? `<sup style='font-size:8px;vertical-align:super;opacity:.7'>${dd > 0 ? "+1" : "−1"}</sup>`
+    : "";
+  const timeDisplay = lt + deltaMark;
+  card.dataset.id = m.id;
+
+  let timeCell, teamsHtml;
+  if (played) {
+    const [h, a] = res;
+    timeCell = `<span class="match-time score" aria-hidden="true">${h}<span class="score-dash">–</span>${a}<span class="ft-tag">FT</span></span>`;
+    teamsHtml = `<span class="team${h>a?" win":""}">${m.home}</span> <span class="vs">vs</span> <span class="team${a>h?" win":""}">${m.away}</span>`;
+    card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(md)}, final score ${res[0]} ${res[1]} (played)`);
+  } else {
+    timeCell = `<span class="match-time">${timeDisplay}</span>`;
+    teamsHtml = `${m.home} <span class="vs">vs</span> ${m.away}`;
+    card.setAttribute("role","checkbox");
+    card.setAttribute("aria-checked", isSel);
+    card.setAttribute("tabindex","0");
+    card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(md)} at ${lt}${dd>0?" next day":dd<0?" previous day":""}`);
+  }
+
+  card.innerHTML = `
+    ${played
+      ? `<div class="played-mark" aria-hidden="true" title="Played"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`
+      : `<div class="check-box" aria-hidden="true">
+      <svg class="check-icon" width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <path d="M2 6l3 3 5-5" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>`}
+    ${timeCell}
+    <div class="match-info">
+      <p class="match-teams">${teamsHtml}</p>
+      <p class="match-venue">${m.venue}</p>
+    </div>
+    <span class="${badgeClass(m.stage)}">${badgeText(m.stage)}</span>
+  `;
+
+  if (!played) {
+    const toggle = () => {
+      if (selected.has(m.id)) selected.delete(m.id);
+      else selected.add(m.id);
+      render();
+    };
+    card.addEventListener("click", toggle);
+    card.addEventListener("keydown", e => { if (e.key===" "||e.key==="Enter") { e.preventDefault(); toggle(); } });
+  }
+  return card;
+}
+
+// Upcoming tab: unplayed matches grouped by day, with collapse + selection.
 function renderList() {
   const main = document.getElementById("matchList");
-  const filtered = getFiltered();
-  const grouped = groupByDate(filtered);
+  const grouped = groupByDate(getFiltered());
 
   if (grouped.length === 0) {
-    main.innerHTML = '<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><p>No matches found</p></div>';
+    main.innerHTML = '<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><p>No upcoming matches found</p></div>';
     return;
   }
 
   main.innerHTML = "";
   grouped.forEach(([date, dayMatches]) => {
-    const daySelectable = dayMatches.filter(isSelectable).length;
     const daySelected = dayMatches.filter(m => selected.has(m.id)).length;
-    const dayPlayed = dayMatches.length - daySelectable;
-    const countText = daySelectable === 0
-      ? `${dayMatches.length} played`
-      : `${daySelected}/${daySelectable} selected`;
+    const countText = `${daySelected}/${dayMatches.length} selected`;
     const isCollapsed = collapsedDays.has(date);
     const section = document.createElement("section");
     section.className = "day-section" + (isCollapsed ? " collapsed" : "");
@@ -1043,68 +1163,45 @@ function renderList() {
 
     const matchWrap = document.createElement("div");
     matchWrap.className = "matches";
+    dayMatches.forEach(m => matchWrap.appendChild(buildCard(m)));
+    section.appendChild(matchWrap);
+    main.appendChild(section);
+  });
+}
 
-    dayMatches.forEach(m => {
-      const res = getResult(m);          // final score, or null if not played
-      const played = !!res;
-      const isSel = selected.has(m.id);
-      const card = document.createElement("div");
-      card.className = "match-card" + (isSel ? " selected" : "") + (played ? " played" : "");
-      const lt = localTime(m);
-      // Day offset between the kick-off's real local date and the official matchday.
-      const ld = localDateKey(m), md = matchdayKey(m);
-      let dd = 0;
-      if (ld > md) dd = 1; else if (ld < md) dd = -1;
-      const deltaMark = dd !== 0
-        ? `<sup style='font-size:8px;vertical-align:super;opacity:.7'>${dd > 0 ? "+1" : "−1"}</sup>`
-        : "";
-      const timeDisplay = lt + deltaMark;
-      card.dataset.id = m.id;
+// Results tab: played matches, grouped by day, most-recent day first.
+function renderResults() {
+  const main = document.getElementById("matchList");
+  const played = getResults();
 
-      let timeCell, teamsHtml;
-      if (played) {
-        const [h, a] = res;
-        timeCell = `<span class="match-time score" aria-hidden="true">${h}<span class="score-dash">–</span>${a}<span class="ft-tag">FT</span></span>`;
-        teamsHtml = `<span class="team${h>a?" win":""}">${m.home}</span> <span class="vs">vs</span> <span class="team${a>h?" win":""}">${m.away}</span>`;
-        // Played matches are informational only — not selectable for calendar export.
-        card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(md)}, final score ${res[0]} ${res[1]} (played)`);
-      } else {
-        timeCell = `<span class="match-time">${timeDisplay}</span>`;
-        teamsHtml = `${m.home} <span class="vs">vs</span> ${m.away}`;
-        card.setAttribute("role","checkbox");
-        card.setAttribute("aria-checked", isSel);
-        card.setAttribute("tabindex","0");
-        card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(md)} at ${lt}${dd>0?" next day":dd<0?" previous day":""}`);
-      }
+  if (played.length === 0) {
+    main.innerHTML = '<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><p>No results yet</p><p class="empty-sub">Final scores will appear here as matches are played.</p></div>';
+    return;
+  }
 
-      card.innerHTML = `
-        ${played
-          ? `<div class="played-mark" aria-hidden="true" title="Played"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>`
-          : `<div class="check-box" aria-hidden="true">
-          <svg class="check-icon" width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 6l3 3 5-5" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>`}
-        ${timeCell}
-        <div class="match-info">
-          <p class="match-teams">${teamsHtml}</p>
-          <p class="match-venue">${m.venue}</p>
-        </div>
-        <span class="${badgeClass(m.stage)}">${badgeText(m.stage)}</span>
-      `;
+  // group by matchday, newest day first
+  const map = {};
+  played.forEach(m => { const k = matchdayKey(m); (map[k] = map[k] || []).push(m); });
+  const days = Object.entries(map)
+    .sort(([a],[b]) => b.localeCompare(a)); // newest first
+  days.forEach(([, arr]) => arr.sort((a,b) => getMatchUTC(b) - getMatchUTC(a)));
 
-      if (!played) {
-        const toggle = () => {
-          if (selected.has(m.id)) selected.delete(m.id);
-          else selected.add(m.id);
-          render();
-        };
-        card.addEventListener("click", toggle);
-        card.addEventListener("keydown", e => { if (e.key===" "||e.key==="Enter") { e.preventDefault(); toggle(); } });
-      }
-
-      matchWrap.appendChild(card);
-    });
+  main.innerHTML = "";
+  days.forEach(([date, dayMatches]) => {
+    const section = document.createElement("section");
+    section.className = "day-section";
+    section.setAttribute("aria-label", formatDate(date));
+    const header = document.createElement("div");
+    header.className = "day-header static";
+    header.innerHTML = `
+      <span class="day-label">${formatDate(date)}</span>
+      <div class="day-rule" aria-hidden="true"></div>
+      <span class="day-count">${dayMatches.length} played</span>
+    `;
+    section.appendChild(header);
+    const matchWrap = document.createElement("div");
+    matchWrap.className = "matches";
+    dayMatches.forEach(m => matchWrap.appendChild(buildCard(m)));
     section.appendChild(matchWrap);
     main.appendChild(section);
   });
@@ -1132,12 +1229,45 @@ function renderSelectAll() {
 
 function render() {
   pruneSelected();
+  updateTabsUI();
+
+  if (activeTab === "results") {
+    renderResults();
+    renderTray();   // tray stays in sync (hidden if nothing selected)
+    return;
+  }
   renderFilters();
   renderCalendar();
   renderList();
   renderTray();
   renderSelectAll();
 }
+
+// Show/hide the controls bar and tray per tab, update tab states + results badge.
+function updateTabsUI() {
+  const onResults = activeTab === "results";
+  document.getElementById("controlsBar").style.display = onResults ? "none" : "";
+  document.getElementById("tabUpcoming").classList.toggle("active", !onResults);
+  document.getElementById("tabResults").classList.toggle("active", onResults);
+  document.getElementById("tabUpcoming").setAttribute("aria-selected", String(!onResults));
+  document.getElementById("tabResults").setAttribute("aria-selected", String(onResults));
+
+  const badge = document.getElementById("resultsBadge");
+  const n = getResults().length;
+  badge.textContent = n;
+  badge.hidden = n === 0;
+}
+
+// Tab switching
+function switchTab(tab) {
+  if (activeTab === tab) return;
+  activeTab = tab;
+  window.scrollTo({ top: 0, behavior: "auto" });
+  render();
+  if (tab === "upcoming") jumpToToday(false);
+}
+document.getElementById("tabUpcoming").addEventListener("click", () => switchTab("upcoming"));
+document.getElementById("tabResults").addEventListener("click", () => switchTab("results"));
 
 // Search
 document.getElementById("search").addEventListener("input", e => {
