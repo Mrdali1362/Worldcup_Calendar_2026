@@ -338,6 +338,12 @@
     border-radius: 4px;
     padding: 1px 3px;
   }
+  .match-time.score .ft-tag.prov {
+    color: #E0A52B;
+    border-color: #E0A52B66;
+  }
+  /* provisional score slightly dimmed to read as "not yet confirmed" */
+  .match-time.score.provisional { color: #E9D8B0; }
 
   .match-info { flex: 1; min-width: 0; }
   .match-teams {
@@ -350,6 +356,7 @@
   .match-card.selected .match-teams { color: var(--text); }
   .vs { color: var(--muted); font-weight: 400; }
   .match-teams .team.win { color: var(--accent); font-weight: 700; }
+  .match-teams .team.resolved { color: var(--text); }
   .match-venue {
     font-size: 11px;
     color: var(--muted);
@@ -789,33 +796,74 @@ function matchdayKey(m) {
 
 // ─── Live results (final scores only) from openfootball, fetched on load ───
 let RESULTS = {};            // key: `${date}|${normTeam(a)}|${normTeam(b)}` -> [goalsA, goalsB]
+let FEED_TEAMS = {};         // official knockout assignment from feed: { [matchId]: {home, away} }
 let resultsStatus = "idle";  // idle | loading | ok | error
 
 // Normalize team names so our list and the data source line up.
 const TEAM_ALIASES = {
   "czech republic": "czechia",
-  "turkey": "türkiye",
+  "czechia": "czechia",
+  "turkey": "turkiye",
+  "turkiye": "turkiye",
+  "türkiye": "turkiye",
   "korea republic": "south korea",
-  "ivory coast": "ivory coast",
+  "republic of korea": "south korea",
+  "south korea": "south korea",
+  "cote d'ivoire": "ivory coast",
   "côte d'ivoire": "ivory coast",
+  "ivory coast": "ivory coast",
+  "cape verde": "cape verde",
+  "cabo verde": "cape verde",
+  "dr congo": "dr congo",
+  "congo dr": "dr congo",
+  "democratic republic of the congo": "dr congo",
+  "bosnia and herzegovina": "bosnia & herzegovina",
+  "bosnia & herzegovina": "bosnia & herzegovina",
+  "usa": "usa",
+  "united states": "usa",
 };
 function normTeam(name) {
   let n = (name || "").trim().toLowerCase();
-  n = TEAM_ALIASES[n] || n;
-  return n;
+  // strip diacritics so "Türkiye"/"Curaçao" match regardless of source spelling
+  n = n.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return TEAM_ALIASES[n] || n;
 }
 function resultKey(date, t1, t2) {
   return `${date}|${normTeam(t1)}|${normTeam(t2)}`;
 }
 
-// Look up a final result for one of our matches, regardless of home/away ordering
-// in the source. Returns [homeGoals, awayGoals] in OUR m.home/m.away order, or null.
-function getResult(m) {
+// Manually-entered fallback scores for matches the openfootball feed hasn't
+// published yet. Keyed by our match id; goals are in [home, away] order.
+// These are shown with a "provisional" tag and are AUTOMATICALLY superseded the
+// moment the live feed publishes the same match (the feed always wins).
+// Remove entries here once the feed has caught up (harmless to leave — feed overrides).
+const MANUAL_RESULTS = {
+  51: [0, 3],  // Scotland 0–3 Brazil (Group C) — feed lagging as of entry
+  52: [4, 2],  // Morocco 4–2 Haiti (Group C) — feed lagging as of entry
+};
+
+// Look up a result for a match, with provenance.
+// Priority: openfootball feed (authoritative) > manual provisional seed > none.
+// Returns { score:[h,a], provisional:bool } or null.
+function getResultInfo(m) {
   const direct = RESULTS[resultKey(m.date, m.home, m.away)];
-  if (direct) return direct;
+  if (direct) return { score: direct, provisional: false };
   const flipped = RESULTS[resultKey(m.date, m.away, m.home)];
-  if (flipped) return [flipped[1], flipped[0]];
+  if (flipped) return { score: [flipped[1], flipped[0]], provisional: false };
+  if (MANUAL_RESULTS[m.id]) return { score: MANUAL_RESULTS[m.id], provisional: true };
   return null;
+}
+
+// Score-only lookup (back-compat for existing callers). Returns [h,a] or null.
+function getResult(m) {
+  const info = getResultInfo(m);
+  return info ? info.score : null;
+}
+
+// True if this match's result is provisional (manual seed, not yet in the feed).
+function isProvisional(m) {
+  const info = getResultInfo(m);
+  return !!(info && info.provisional);
 }
 
 // A match can be selected for calendar export only if it hasn't been played yet.
@@ -831,6 +879,111 @@ function pruneSelected() {
   return changed;
 }
 
+// ─── Bracket resolution: fill placeholders with real teams as matches finish ───
+let BRACKET = {}; // placeholder label -> real team name
+
+// Final standings for every group whose 6 matches are all played.
+function computeGroupStandings() {
+  const out = {};
+  "ABCDEFGHIJKL".split("").forEach(letter => {
+    const groupMatches = MATCHES.filter(m => m.stage === "Group " + letter);
+    if (!groupMatches.length) return;
+    const results = groupMatches.map(m => ({ m, r: getResult(m) }));
+    if (results.some(x => !x.r)) return; // group not finished
+
+    const T = {};
+    const ensure = t => (T[t] = T[t] || { team: t, pts: 0, gf: 0, ga: 0, gd: 0 });
+    results.forEach(({ m, r }) => {
+      const [hg, ag] = r;
+      const H = ensure(m.home), A = ensure(m.away);
+      H.gf += hg; H.ga += ag; A.gf += ag; A.ga += hg;
+      if (hg > ag) H.pts += 3; else if (ag > hg) A.pts += 3; else { H.pts++; A.pts++; }
+    });
+    Object.values(T).forEach(t => t.gd = t.gf - t.ga);
+
+    const h2hPoints = (teams) => {
+      const set = new Set(teams), pts = {}; teams.forEach(t => pts[t] = 0);
+      results.forEach(({ m, r }) => {
+        if (!set.has(m.home) || !set.has(m.away)) return;
+        const [hg, ag] = r;
+        if (hg > ag) pts[m.home] += 3; else if (ag > hg) pts[m.away] += 3; else { pts[m.home]++; pts[m.away]++; }
+      });
+      return pts;
+    };
+
+    // Official 2026 order: points, then head-to-head among level teams, then GD, then GF.
+    const table = Object.values(T).sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      // head-to-head among all teams currently level on points with these two
+      const tiedOnPts = Object.values(T).filter(t => t.pts === a.pts).map(t => t.team);
+      if (tiedOnPts.length > 1) {
+        const hp = h2hPoints(tiedOnPts);
+        if ((hp[b.team] || 0) !== (hp[a.team] || 0)) return (hp[b.team] || 0) - (hp[a.team] || 0);
+      }
+      if (b.gd !== a.gd) return b.gd - a.gd;
+      if (b.gf !== a.gf) return b.gf - a.gf;
+      return 0; // remaining FIFA tiebreakers (fair play, drawing of lots) not modelled
+    });
+    out[letter] = { winner: table[0].team, runnerUp: table[1].team };
+  });
+  return out;
+}
+
+function isPlaceholder(name) {
+  return /^(W\d+|Winner [A-L]|Runner-up [A-L]|Best 3rd|Semifinal Loser|Finalist)/.test(name);
+}
+
+// Resolve one side ("home"/"away") of a match to a real team name when known.
+// Priority: official feed assignment (by match id) > computed/propagated bracket > raw placeholder.
+function slotTeam(m, side) {
+  const feed = FEED_TEAMS[m.id];
+  if (feed && feed[side]) return feed[side];
+  const label = side === "home" ? m.home : m.away;
+  return BRACKET[label] || label;
+}
+
+// Winner of a knockout match (by id) if played; resolves its own teams first.
+function knockoutWinner(matchId) {
+  const m = ID_TO_MATCH[matchId];
+  if (!m) return null;
+  const r = getResult(m);
+  if (!r) return null;
+  const [hg, ag] = r;
+  if (hg === ag) return null; // need a winner; if feed has no decider, stay unresolved
+  const name = hg > ag ? slotTeam(m, "home") : slotTeam(m, "away");
+  return isPlaceholder(name) ? null : name;
+}
+
+// Rebuild the placeholder->team map from current results + official feed assignments.
+function rebuildBracket() {
+  const map = {};
+  // group winners / runners-up from computed standings (fallback layer)
+  const standings = computeGroupStandings();
+  Object.entries(standings).forEach(([letter, s]) => {
+    map["Winner " + letter] = s.winner;
+    map["Runner-up " + letter] = s.runnerUp;
+  });
+  BRACKET = map;
+  // knockout winners: iterate so later rounds resolve once feeders are known
+  for (let pass = 0; pass < 6; pass++) {
+    let changed = false;
+    MATCHES.forEach(m => {
+      if (m.id < 73) return;
+      const key = "W" + m.id;
+      if (map[key]) return;
+      const w = knockoutWinner(m.id);
+      if (w) { map[key] = w; changed = true; }
+    });
+    BRACKET = map;
+    if (!changed) break;
+  }
+  BRACKET = map;
+}
+
+// Display name for a team label: resolved team if known, else the placeholder label.
+function teamName(label) { return BRACKET[label] || label; }
+
+
 async function fetchResults() {
   resultsStatus = "loading";
   renderUpdateStatus();
@@ -839,14 +992,41 @@ async function fetchResults() {
     const r = await fetch(URL, { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const data = await r.json();
-    const map = {};
-    (data.matches || []).forEach(mt => {
-      const ft = mt.score && mt.score.ft;
-      if (Array.isArray(ft) && ft.length === 2 && ft[0] != null && ft[1] != null) {
-        map[resultKey(mt.date, mt.team1, mt.team2)] = [ft[0], ft[1]];
+    // openfootball may use {matches:[...]} or {rounds:[{matches:[...]}]}
+    const feedMatches = data.matches
+      ? data.matches
+      : (data.rounds || []).flatMap(rd => rd.matches || []);
+
+    const teamStr = t => (t == null ? "" : (typeof t === "string" ? t : (t.name || ""))).trim();
+    // strip a trailing " (XYZ)" confederation/code suffix some feeds add
+    const cleanTeam = s => s.replace(/\s*\([A-Z]{2,3}\)\s*$/, "").trim();
+    const looksPlaceholder = s =>
+      /winner|runner|loser|group|match\s*\d|best\s*3|3rd|placeholder|tbd|\//i.test(s)   // text placeholders & any "A/B/C" third-place slot
+      || /^[WL]\d{1,3}$/i.test(s)        // W74 / L101
+      || /^[123][A-L]$/i.test(s)         // 1C = winner C, 2F = runner-up F, 3A = third A
+      || s === "";
+
+    const scoreMap = {};
+    const feedTeams = {};
+    feedMatches.forEach(mt => {
+      const t1 = cleanTeam(teamStr(mt.team1));
+      const t2 = cleanTeam(teamStr(mt.team2));
+      // scores: support {score:{ft:[a,b]}} and score1/score2
+      let ft = mt.score && mt.score.ft;
+      if (!Array.isArray(ft) && mt.score1 != null && mt.score2 != null) ft = [mt.score1, mt.score2];
+      if (Array.isArray(ft) && ft.length === 2 && ft[0] != null && ft[1] != null && t1 && t2) {
+        scoreMap[resultKey(mt.date, t1, t2)] = [ft[0], ft[1]];
+      }
+      // official knockout team assignment, keyed by FIFA match number (== our id)
+      if (mt.num != null && ID_TO_MATCH[mt.num] && ID_TO_MATCH[mt.num].id >= 73) {
+        const assign = {};
+        if (t1 && !looksPlaceholder(t1)) assign.home = t1;
+        if (t2 && !looksPlaceholder(t2)) assign.away = t2;
+        if (assign.home || assign.away) feedTeams[mt.num] = assign;
       }
     });
-    RESULTS = map;
+    RESULTS = scoreMap;
+    FEED_TEAMS = feedTeams;
     resultsStatus = "ok";
     renderUpdateStatus();
     render();
@@ -861,9 +1041,26 @@ function renderUpdateStatus() {
   const el = document.getElementById("updateStatus");
   if (!el) return;
   const n = Object.keys(RESULTS).length;
+  // count manual results still in effect (not yet superseded by the feed)
+  const provCount = Object.keys(MANUAL_RESULTS).filter(id => {
+    const m = ID_TO_MATCH[id]; return m && isProvisional(m);
+  }).length;
+  const provNote = provCount ? ` · ${provCount} provisional` : "";
   if (resultsStatus === "loading") { el.textContent = "Updating results…"; el.className = "update-status loading"; }
-  else if (resultsStatus === "ok") { el.textContent = n ? `Results updated · ${n} played` : "Results updated · none yet"; el.className = "update-status ok"; }
-  else if (resultsStatus === "error") { el.textContent = "Couldn't fetch results (offline?)"; el.className = "update-status error"; }
+  else if (resultsStatus === "ok") {
+    const groups = Object.keys(computeGroupStandings()).length;
+    let msg = n ? `Results updated · ${n} played` : "Results updated · none yet";
+    if (groups) msg += ` · ${groups}/12 groups decided`;
+    el.textContent = msg + provNote;
+    el.className = "update-status ok";
+  }
+  else if (resultsStatus === "error") {
+    const isFile = location.protocol === "file:";
+    el.textContent = (isFile
+      ? "Live results blocked when opened as a local file — host it or open via a server to enable updates"
+      : "Couldn't fetch live results (offline?)") + provNote;
+    el.className = "update-status error";
+  }
   else { el.textContent = ""; el.className = "update-status"; }
 }
 
@@ -935,7 +1132,7 @@ function buildICS(ids) {
     const end = new Date(start.getTime() + 2*3600000);
     lines.push("BEGIN:VEVENT");
     lines.push("UID:wc2026-"+m.id+"@selector");
-    lines.push("SUMMARY:\u26BD "+m.home+" vs "+m.away+" ("+m.stage+")");
+    lines.push("SUMMARY:\u26BD "+slotTeam(m,"home")+" vs "+slotTeam(m,"away")+" ("+m.stage+")");
     lines.push("DTSTART:"+fmtICS(start));
     lines.push("DTEND:"+fmtICS(end));
     lines.push("LOCATION:"+m.venue);
@@ -952,7 +1149,7 @@ function toGoogleURL(m) {
   const fmt = dt => dt.toISOString().replace(/[-:]/g,"").replace(".000Z","Z");
   const p = new URLSearchParams({
     action:"TEMPLATE",
-    text:"\u26BD "+m.home+" vs "+m.away+" \u2014 FIFA World Cup 2026",
+    text:"\u26BD "+slotTeam(m,"home")+" vs "+slotTeam(m,"away")+" \u2014 FIFA World Cup 2026",
     dates:fmt(start)+"/"+fmt(end),
     details:m.stage+" | FIFA World Cup 2026",
     location:m.venue,
@@ -966,7 +1163,7 @@ function toOutlookURL(m) {
   const p = new URLSearchParams({
     path:"/calendar/action/compose",
     rru:"addevent",
-    subject:"\u26BD "+m.home+" vs "+m.away+" \u2014 FIFA World Cup 2026",
+    subject:"\u26BD "+slotTeam(m,"home")+" vs "+slotTeam(m,"away")+" \u2014 FIFA World Cup 2026",
     startdt:start.toISOString(),
     enddt:end.toISOString(),
     body:m.stage+" | FIFA World Cup 2026",
@@ -995,7 +1192,7 @@ function getFiltered() {
     const sg = stageGroup(m.stage);
     const stageOK = activeFilter === "All" || sg === activeFilter || m.stage === activeFilter;
     const q = searchQuery.toLowerCase();
-    const searchOK = !q || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || m.venue.toLowerCase().includes(q);
+    const searchOK = !q || slotTeam(m,"home").toLowerCase().includes(q) || slotTeam(m,"away").toLowerCase().includes(q) || m.home.toLowerCase().includes(q) || m.away.toLowerCase().includes(q) || m.venue.toLowerCase().includes(q);
     return stageOK && searchOK;
   });
 }
@@ -1076,19 +1273,31 @@ function buildCard(m) {
   const timeDisplay = lt + deltaMark;
   card.dataset.id = m.id;
 
+  // Resolve placeholders (e.g. "Winner A", "W74") to real teams when known.
+  const homeName = slotTeam(m, "home");
+  const awayName = slotTeam(m, "away");
+  const homeResolved = homeName !== m.home;
+  const awayResolved = awayName !== m.away;
+
   let timeCell, teamsHtml;
   if (played) {
     const [h, a] = res;
-    timeCell = `<span class="match-time score" aria-hidden="true">${h}<span class="score-dash">–</span>${a}<span class="ft-tag">FT</span></span>`;
-    teamsHtml = `<span class="team${h>a?" win":""}">${m.home}</span> <span class="vs">vs</span> <span class="team${a>h?" win":""}">${m.away}</span>`;
-    card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(md)}, final score ${res[0]} ${res[1]} (played)`);
+    const prov = isProvisional(m);
+    const tag = prov
+      ? `<span class="ft-tag prov" title="Provisional — not yet confirmed by the live feed">PROV</span>`
+      : `<span class="ft-tag">FT</span>`;
+    timeCell = `<span class="match-time score${prov ? " provisional" : ""}" aria-hidden="true">${h}<span class="score-dash">–</span>${a}${tag}</span>`;
+    teamsHtml = `<span class="team${h>a?" win":""}">${homeName}</span> <span class="vs">vs</span> <span class="team${a>h?" win":""}">${awayName}</span>`;
+    card.setAttribute("aria-label", `${homeName} vs ${awayName}, ${m.stage}, ${formatDate(md)}, ${prov ? "provisional" : "final"} score ${res[0]} ${res[1]} (played)`);
   } else {
     timeCell = `<span class="match-time">${timeDisplay}</span>`;
-    teamsHtml = `${m.home} <span class="vs">vs</span> ${m.away}`;
+    const hCls = homeResolved ? " resolved" : "";
+    const aCls = awayResolved ? " resolved" : "";
+    teamsHtml = `<span class="team${hCls}">${homeName}</span> <span class="vs">vs</span> <span class="team${aCls}">${awayName}</span>`;
     card.setAttribute("role","checkbox");
     card.setAttribute("aria-checked", isSel);
     card.setAttribute("tabindex","0");
-    card.setAttribute("aria-label", `${m.home} vs ${m.away}, ${m.stage}, ${formatDate(md)} at ${lt}${dd>0?" next day":dd<0?" previous day":""}`);
+    card.setAttribute("aria-label", `${homeName} vs ${awayName}, ${m.stage}, ${formatDate(md)} at ${lt}${dd>0?" next day":dd<0?" previous day":""}`);
   }
 
   card.innerHTML = `
@@ -1228,6 +1437,7 @@ function renderSelectAll() {
 }
 
 function render() {
+  rebuildBracket();
   pruneSelected();
   updateTabsUI();
 
