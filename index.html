@@ -846,10 +846,25 @@ const MANUAL_RESULTS = {
 // Priority: openfootball feed (authoritative) > manual provisional seed > none.
 // Returns { score:[h,a], provisional:bool } or null.
 function getResultInfo(m) {
+  // 1) direct match on the stored names (works for group stage: real team names)
   const direct = RESULTS[resultKey(m.date, m.home, m.away)];
   if (direct) return { score: direct, provisional: false };
   const flipped = RESULTS[resultKey(m.date, m.away, m.home)];
   if (flipped) return { score: [flipped[1], flipped[0]], provisional: false };
+
+  // 2) knockout matches store placeholders ("Winner C") but the feed records the
+  //    score under the REAL team names — so retry using the resolved slot teams.
+  if (m.id >= 73) {
+    const hn = slotTeam(m, "home"), an = slotTeam(m, "away");
+    if (hn !== m.home || an !== m.away) {
+      const kd = RESULTS[resultKey(m.date, hn, an)];
+      if (kd) return { score: kd, provisional: false };
+      const kf = RESULTS[resultKey(m.date, an, hn)];
+      if (kf) return { score: [kf[1], kf[0]], provisional: false };
+    }
+  }
+
+  // 3) manual provisional fallback (matches the feed hasn't published yet)
   if (MANUAL_RESULTS[m.id]) return { score: MANUAL_RESULTS[m.id], provisional: true };
   return null;
 }
@@ -954,6 +969,18 @@ function knockoutWinner(matchId) {
   return isPlaceholder(name) ? null : name;
 }
 
+// Loser of a knockout match (used for the third-place playoff).
+function knockoutLoser(matchId) {
+  const m = ID_TO_MATCH[matchId];
+  if (!m) return null;
+  const r = getResult(m);
+  if (!r) return null;
+  const [hg, ag] = r;
+  if (hg === ag) return null;
+  const name = hg > ag ? slotTeam(m, "away") : slotTeam(m, "home");
+  return isPlaceholder(name) ? null : name;
+}
+
 // Rebuild the placeholder->team map from current results + official feed assignments.
 function rebuildBracket() {
   const map = {};
@@ -965,7 +992,7 @@ function rebuildBracket() {
   });
   BRACKET = map;
   // knockout winners: iterate so later rounds resolve once feeders are known
-  for (let pass = 0; pass < 6; pass++) {
+  for (let pass = 0; pass < 8; pass++) {
     let changed = false;
     MATCHES.forEach(m => {
       if (m.id < 73) return;
@@ -977,6 +1004,17 @@ function rebuildBracket() {
     BRACKET = map;
     if (!changed) break;
   }
+
+  // Final + third-place use named placeholders, not W## refs.
+  // "Finalist 1/2" = winners of the two semifinals (in id order).
+  // "Semifinal Loser 1/2" = losers of those same semifinals.
+  const semis = MATCHES.filter(m => m.stage === "Semifinal").sort((a, b) => a.id - b.id);
+  semis.forEach((sm, i) => {
+    const w = knockoutWinner(sm.id);
+    const l = knockoutLoser(sm.id);
+    if (w) map["Finalist " + (i + 1)] = w;
+    if (l) map["Semifinal Loser " + (i + 1)] = l;
+  });
   BRACKET = map;
 }
 
@@ -1384,7 +1422,18 @@ function renderResults() {
   const played = getResults();
 
   if (played.length === 0) {
-    main.innerHTML = '<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><p>No results yet</p><p class="empty-sub">Final scores will appear here as matches are played.</p></div>';
+    let sub = "Final scores will appear here as matches are played.";
+    let head = "No results yet";
+    if (resultsStatus === "error") {
+      head = "Results couldn’t load";
+      sub = (location.protocol === "file:")
+        ? "Live results are blocked when the file is opened directly from disk. Host it (or open via a local server) to load results."
+        : "Couldn’t reach the live results feed. Check your connection and reopen.";
+    } else if (resultsStatus === "loading") {
+      head = "Loading results…";
+      sub = "Fetching the latest scores.";
+    }
+    main.innerHTML = '<div class="empty-state"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3 2"/></svg><p>' + head + '</p><p class="empty-sub">' + sub + '</p></div>';
     return;
   }
 
@@ -1474,7 +1523,6 @@ function switchTab(tab) {
   activeTab = tab;
   window.scrollTo({ top: 0, behavior: "auto" });
   render();
-  if (tab === "upcoming") jumpToToday(false);
 }
 document.getElementById("tabUpcoming").addEventListener("click", () => switchTab("upcoming"));
 document.getElementById("tabResults").addEventListener("click", () => switchTab("results"));
@@ -1583,12 +1631,24 @@ function focusDateKey() {
 }
 
 // Scroll the calendar chip and the day section into view for the focus date.
-function jumpToToday(smooth) {
+// `force` allows tab-switches to always scroll; on initial load we only scroll
+// when today actually has matches, so the page never opens scrolled to the bottom.
+function jumpToToday(smooth, force) {
   const key = focusDateKey();
   if (!key) return;
+
+  // On load (not forced): only auto-scroll if the focus day IS today. If the next
+  // match is in the future, stay at the top instead of scrolling down to it.
+  if (!force && key !== todayKey()) {
+    // still align the calendar strip to the focus day, but don't move the page
+    const cal0 = document.getElementById("calendar");
+    const chip0 = cal0 && cal0.querySelector(`[data-date="${key}"]`);
+    if (chip0 && cal0) cal0.scrollLeft = chip0.offsetLeft - (cal0.clientWidth / 2) + (chip0.clientWidth / 2);
+    return;
+  }
+
   const sec = document.getElementById("day-" + key);
   if (sec) sec.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
-  // center the matching calendar chip
   const cal = document.getElementById("calendar");
   const chip = cal && cal.querySelector(`[data-date="${key}"]`);
   if (chip && cal) {
@@ -1599,7 +1659,7 @@ function jumpToToday(smooth) {
 // Init
 render();
 fetchResults();                 // pull latest final scores on open
-jumpToToday(false);             // auto-select / jump to today's matches
+window.scrollTo(0, 0);          // always start at the top — no auto-scroll
 </script>
 </body>
 </html>
