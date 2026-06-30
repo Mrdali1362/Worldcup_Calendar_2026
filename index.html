@@ -342,6 +342,19 @@
     color: #E0A52B;
     border-color: #E0A52B66;
   }
+  .match-time.score .ft-tag.pens {
+    color: #E0A52B;
+    border-color: #E0A52B66;
+  }
+  /* parenthesised penalty shootout count, e.g. 1 (4) */
+  .match-time.score .pen {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-left: 1px;
+  }
+  /* penalty scores need a touch more room */
+  .match-time.score.has-pens { min-width: 84px; }
   /* provisional score slightly dimmed to read as "not yet confirmed" */
   .match-time.score.provisional { color: #E9D8B0; }
 
@@ -796,6 +809,7 @@ function matchdayKey(m) {
 
 // ─── Live results (final scores only) from openfootball, fetched on load ───
 let RESULTS = {};            // key: `${date}|${normTeam(a)}|${normTeam(b)}` -> [goalsA, goalsB]
+let PENS = {};               // same key -> [penGoalsA, penGoalsB] for shootout matches
 let FEED_TEAMS = {};         // official knockout assignment from feed: { [matchId]: {home, away} }
 let resultsStatus = "idle";  // idle | loading | ok | error
 
@@ -848,9 +862,12 @@ const MANUAL_RESULTS = {
 function getResultInfo(m) {
   // 1) direct match on the stored names (works for group stage: real team names)
   const direct = RESULTS[resultKey(m.date, m.home, m.away)];
-  if (direct) return { score: direct, provisional: false };
+  if (direct) return { score: direct, pens: PENS[resultKey(m.date, m.home, m.away)] || null, provisional: false };
   const flipped = RESULTS[resultKey(m.date, m.away, m.home)];
-  if (flipped) return { score: [flipped[1], flipped[0]], provisional: false };
+  if (flipped) {
+    const fp = PENS[resultKey(m.date, m.away, m.home)];
+    return { score: [flipped[1], flipped[0]], pens: fp ? [fp[1], fp[0]] : null, provisional: false };
+  }
 
   // 2) knockout matches store placeholders ("Winner C") but the feed records the
   //    score under the REAL team names — so retry using the resolved slot teams.
@@ -858,15 +875,24 @@ function getResultInfo(m) {
     const hn = slotTeam(m, "home"), an = slotTeam(m, "away");
     if (hn !== m.home || an !== m.away) {
       const kd = RESULTS[resultKey(m.date, hn, an)];
-      if (kd) return { score: kd, provisional: false };
+      if (kd) return { score: kd, pens: PENS[resultKey(m.date, hn, an)] || null, provisional: false };
       const kf = RESULTS[resultKey(m.date, an, hn)];
-      if (kf) return { score: [kf[1], kf[0]], provisional: false };
+      if (kf) {
+        const fp = PENS[resultKey(m.date, an, hn)];
+        return { score: [kf[1], kf[0]], pens: fp ? [fp[1], fp[0]] : null, provisional: false };
+      }
     }
   }
 
   // 3) manual provisional fallback (matches the feed hasn't published yet)
-  if (MANUAL_RESULTS[m.id]) return { score: MANUAL_RESULTS[m.id], provisional: true };
+  if (MANUAL_RESULTS[m.id]) return { score: MANUAL_RESULTS[m.id], pens: null, provisional: true };
   return null;
+}
+
+// Penalty shootout score for a match in m.home/m.away order, or null.
+function getPens(m) {
+  const info = getResultInfo(m);
+  return info ? (info.pens || null) : null;
 }
 
 // Score-only lookup (back-compat for existing callers). Returns [h,a] or null.
@@ -963,8 +989,13 @@ function knockoutWinner(matchId) {
   if (!m) return null;
   const r = getResult(m);
   if (!r) return null;
-  const [hg, ag] = r;
-  if (hg === ag) return null; // need a winner; if feed has no decider, stay unresolved
+  let [hg, ag] = r;
+  if (hg === ag) {
+    // level after full/extra time — decided on penalties if we have them
+    const p = getPens(m);
+    if (!p || p[0] === p[1]) return null; // no decider available -> stay unresolved
+    [hg, ag] = p;
+  }
   const name = hg > ag ? slotTeam(m, "home") : slotTeam(m, "away");
   return isPlaceholder(name) ? null : name;
 }
@@ -975,8 +1006,12 @@ function knockoutLoser(matchId) {
   if (!m) return null;
   const r = getResult(m);
   if (!r) return null;
-  const [hg, ag] = r;
-  if (hg === ag) return null;
+  let [hg, ag] = r;
+  if (hg === ag) {
+    const p = getPens(m);
+    if (!p || p[0] === p[1]) return null;
+    [hg, ag] = p;
+  }
   const name = hg > ag ? slotTeam(m, "away") : slotTeam(m, "home");
   return isPlaceholder(name) ? null : name;
 }
@@ -1045,6 +1080,7 @@ async function fetchResults() {
       || s === "";
 
     const scoreMap = {};
+    const pensMap = {};
     const feedTeams = {};
     feedMatches.forEach(mt => {
       const t1 = cleanTeam(teamStr(mt.team1));
@@ -1054,6 +1090,11 @@ async function fetchResults() {
       if (!Array.isArray(ft) && mt.score1 != null && mt.score2 != null) ft = [mt.score1, mt.score2];
       if (Array.isArray(ft) && ft.length === 2 && ft[0] != null && ft[1] != null && t1 && t2) {
         scoreMap[resultKey(mt.date, t1, t2)] = [ft[0], ft[1]];
+        // penalty shootout score, if the match went to pens
+        const p = mt.score && mt.score.p;
+        if (Array.isArray(p) && p.length === 2 && p[0] != null && p[1] != null) {
+          pensMap[resultKey(mt.date, t1, t2)] = [p[0], p[1]];
+        }
       }
       // official knockout team assignment, keyed by FIFA match number (== our id)
       if (mt.num != null && ID_TO_MATCH[mt.num] && ID_TO_MATCH[mt.num].id >= 73) {
@@ -1064,6 +1105,7 @@ async function fetchResults() {
       }
     });
     RESULTS = scoreMap;
+    PENS = pensMap;
     FEED_TEAMS = feedTeams;
     resultsStatus = "ok";
     renderUpdateStatus();
@@ -1320,13 +1362,20 @@ function buildCard(m) {
   let timeCell, teamsHtml;
   if (played) {
     const [h, a] = res;
+    const pens = getPens(m);              // [ph, pa] in home/away order, or null
     const prov = isProvisional(m);
+    // winner: by penalties if FT level and pens exist, else by FT goals
+    let homeWin = h > a, awayWin = a > h;
+    if (pens && h === a) { homeWin = pens[0] > pens[1]; awayWin = pens[1] > pens[0]; }
     const tag = prov
       ? `<span class="ft-tag prov" title="Provisional — not yet confirmed by the live feed">PROV</span>`
-      : `<span class="ft-tag">FT</span>`;
-    timeCell = `<span class="match-time score${prov ? " provisional" : ""}" aria-hidden="true">${h}<span class="score-dash">–</span>${a}${tag}</span>`;
-    teamsHtml = `<span class="team${h>a?" win":""}">${homeName}</span> <span class="vs">vs</span> <span class="team${a>h?" win":""}">${awayName}</span>`;
-    card.setAttribute("aria-label", `${homeName} vs ${awayName}, ${m.stage}, ${formatDate(md)}, ${prov ? "provisional" : "final"} score ${res[0]} ${res[1]} (played)`);
+      : (pens ? `<span class="ft-tag pens" title="Decided on penalties">PENS</span>` : `<span class="ft-tag">FT</span>`);
+    const hCell = pens ? `${h}<span class="pen">(${pens[0]})</span>` : `${h}`;
+    const aCell = pens ? `${a}<span class="pen">(${pens[1]})</span>` : `${a}`;
+    timeCell = `<span class="match-time score${prov ? " provisional" : ""}${pens ? " has-pens" : ""}" aria-hidden="true">${hCell}<span class="score-dash">–</span>${aCell}${tag}</span>`;
+    teamsHtml = `<span class="team${homeWin?" win":""}">${homeName}</span> <span class="vs">vs</span> <span class="team${awayWin?" win":""}">${awayName}</span>`;
+    const penAria = pens ? `, penalties ${pens[0]} ${pens[1]}` : "";
+    card.setAttribute("aria-label", `${homeName} vs ${awayName}, ${m.stage}, ${formatDate(md)}, ${prov ? "provisional" : "final"} score ${res[0]} ${res[1]}${penAria} (played)`);
   } else {
     timeCell = `<span class="match-time">${timeDisplay}</span>`;
     const hCls = homeResolved ? " resolved" : "";
