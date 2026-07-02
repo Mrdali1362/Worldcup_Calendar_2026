@@ -1088,9 +1088,16 @@ async function fetchResults() {
       // scores: support {score:{ft:[a,b]}} and score1/score2
       let ft = mt.score && mt.score.ft;
       if (!Array.isArray(ft) && mt.score1 != null && mt.score2 != null) ft = [mt.score1, mt.score2];
-      if (Array.isArray(ft) && ft.length === 2 && ft[0] != null && ft[1] != null && t1 && t2) {
-        scoreMap[resultKey(mt.date, t1, t2)] = [ft[0], ft[1]];
-        // penalty shootout score, if the match went to pens
+      // If the match went to extra time, the after-extra-time score (et) is the
+      // real result (e.g. 2–2 at full time, 3–2 a.e.t.). Use it in place of ft.
+      const et = mt.score && mt.score.et;
+      let finalScore = ft;
+      if (Array.isArray(et) && et.length === 2 && et[0] != null && et[1] != null) {
+        finalScore = et;
+      }
+      if (Array.isArray(finalScore) && finalScore.length === 2 && finalScore[0] != null && finalScore[1] != null && t1 && t2) {
+        scoreMap[resultKey(mt.date, t1, t2)] = [finalScore[0], finalScore[1]];
+        // penalty shootout score, only meaningful when still level after extra time
         const p = mt.score && mt.score.p;
         if (Array.isArray(p) && p.length === 2 && p[0] != null && p[1] != null) {
           pensMap[resultKey(mt.date, t1, t2)] = [p[0], p[1]];
